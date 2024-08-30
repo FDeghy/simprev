@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	tunnelConns = make(chan *nbio.Conn, 64)
+	tunnelConns = make(chan *nbio.Conn, 256)
 )
 
 func GetTunnelConn() *nbio.Conn {
