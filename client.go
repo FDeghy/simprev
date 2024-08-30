@@ -89,6 +89,7 @@ func StartClientTunnel(taddr, daddr string) (*nbio.Engine, *nbio.Engine) {
 	go func(engine *nbio.Engine) {
 		for {
 			if idleConns.Load() >= MAX_IDLE_CONNS {
+				time.Sleep(300 * time.Millisecond)
 				continue
 			}
 
