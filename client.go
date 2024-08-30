@@ -26,10 +26,12 @@ func StartClientTunnel(taddr, daddr string) (*nbio.Engine, *nbio.Engine) {
 	})
 
 	tengine.OnData(func(c *nbio.Conn, data []byte) {
+		var sess *nbio.Conn
 		sess, ok := c.Session().(*nbio.Conn)
-		if !ok {
+		if !ok || sess == nil {
 			conn, err := nbio.Dial("tcp", daddr)
 			if err != nil {
+				log.Printf("err: %v\n", err)
 				c.Close()
 				return
 			}
@@ -45,6 +47,7 @@ func StartClientTunnel(taddr, daddr string) (*nbio.Engine, *nbio.Engine) {
 				c.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
 				sess.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
 			})
+			dengine.AddConn(conn)
 
 			c.SetSession(conn)
 			sess = conn
@@ -97,6 +100,7 @@ func StartClientTunnel(taddr, daddr string) (*nbio.Engine, *nbio.Engine) {
 
 			engine.AddConn(conn)
 			idleConns.Add(1)
+			log.Printf("idle conns: %v\n", idleConns.Load())
 		}
 	}(tengine)
 

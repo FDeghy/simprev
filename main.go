@@ -8,7 +8,7 @@ import (
 func main() {
 	iran := flag.Bool("i", false, "iran")
 	kharej := flag.Bool("f", false, "kharej")
-	taddr := flag.String("la", "0.0.0.0:9985", "tunnel address (listen for iran, dial for kharej)")
+	taddr := flag.String("ta", "0.0.0.0:9985", "tunnel address (listen for iran, dial for kharej)")
 	paddr := flag.String("pa", "127.0.0.1:51900", "proxy address")
 	flag.Parse()
 
