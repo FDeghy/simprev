@@ -1,4 +1,4 @@
-module syny
+module simprev
 
 go 1.23.0
 
