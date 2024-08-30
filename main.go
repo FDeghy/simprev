@@ -3,37 +3,27 @@ package main
 import (
 	"flag"
 	"log"
-	"net"
-	"time"
 )
 
 func main() {
-	mode := flag.Int("m", 0, "mode")
+	iran := flag.Bool("i", false, "iran")
+	kharej := flag.Bool("f", false, "kharej")
+	taddr := flag.String("la", "0.0.0.0:9985", "tunnel address (listen for iran, dial for kharej)")
+	paddr := flag.String("la", "127.0.0.1:51900", "proxy address")
 	flag.Parse()
 
-	if *mode == 0 {
-		addr, _ := net.ResolveIPAddr("ip:17", "127.0.0.1")
-		conn, err := net.ListenIP("ip:17", addr)
-		if err != nil {
-			log.Fatalln(err)
-		}
-		data := make([]byte, 2048)
-		log.Printf("%v, %v", conn.LocalAddr(), conn.RemoteAddr())
-		for {
-			n, a, err := conn.ReadFrom(data)
-			log.Printf("%+v, %+v, %+v", a, err, string(data[:n]))
-		}
+	if *iran {
+		tEngine := StartTunnelServer(*taddr)
+		defer tEngine.Stop()
+		sEngine := StartServer(*paddr)
+		defer sEngine.Stop()
+	} else if *kharej {
+		tEngine, dEngine := StartClientTunnel(*taddr, *paddr)
+		defer tEngine.Stop()
+		defer dEngine.Stop()
 	} else {
-		addr, _ := net.ResolveIPAddr("ip:17", "127.0.0.1")
-		conn, err := net.ListenIP("ip:17", addr)
-		if err != nil {
-			log.Fatalln(err)
-		}
-		log.Printf("%v, %v", conn.LocalAddr(), conn.RemoteAddr())
-		for {
-			n, err := conn.WriteTo([]byte("salam"), addr)
-			log.Printf("%+v, %+v", err, n)
-			time.Sleep(1 * time.Second)
-		}
+		log.Fatalln("select i or f")
 	}
+
+	<-make(chan int)
 }
