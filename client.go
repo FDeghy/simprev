@@ -86,24 +86,26 @@ func StartClientTunnel(taddr, daddr string) (*nbio.Engine, *nbio.Engine) {
 		log.Fatalln(err)
 	}
 
-	go func(engine *nbio.Engine) {
-		for {
-			if idleConns.Load() >= MAX_IDLE_CONNS {
-				time.Sleep(300 * time.Millisecond)
-				continue
-			}
+	for i := 0; i < 8; i++ {
+		go func(engine *nbio.Engine) {
+			for {
+				if idleConns.Load() >= MAX_IDLE_CONNS {
+					time.Sleep(300 * time.Millisecond)
+					continue
+				}
 
-			conn, err := nbio.Dial("tcp", taddr)
-			if err != nil {
-				log.Printf("err: %v\n", err)
-				continue
-			}
+				conn, err := nbio.Dial("tcp", taddr)
+				if err != nil {
+					log.Printf("err: %v\n", err)
+					continue
+				}
 
-			engine.AddConn(conn)
-			idleConns.Add(1)
-			log.Printf("idle conns: %v\n", idleConns.Load())
-		}
-	}(tengine)
+				engine.AddConn(conn)
+				idleConns.Add(1)
+				log.Printf("idle conns: %v\n", idleConns.Load())
+			}
+		}(tengine)
+	}
 
 	return tengine, dengine
 }
