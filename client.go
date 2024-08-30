@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"runtime"
 	"sync/atomic"
 	"time"
 
@@ -18,11 +19,13 @@ func StartClientTunnel(taddr, daddr string) (*nbio.Engine, *nbio.Engine) {
 	tengine := nbio.NewEngine(nbio.Config{
 		Network:            "tcp",
 		MaxWriteBufferSize: 6 * 1024 * 1024,
+		NPoller:            runtime.NumCPU(),
 	})
 
 	dengine := nbio.NewEngine(nbio.Config{
 		Network:            "tcp",
 		MaxWriteBufferSize: 6 * 1024 * 1024,
+		NPoller:            runtime.NumCPU(),
 	})
 
 	tengine.OnData(func(c *nbio.Conn, data []byte) {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"runtime"
 	"time"
 
 	"github.com/lesismal/nbio"
@@ -12,6 +13,7 @@ func StartServer(laddr string) *nbio.Engine {
 		Network:            "tcp",
 		Addrs:              []string{laddr},
 		MaxWriteBufferSize: 6 * 1024 * 1024,
+		NPoller:            runtime.NumCPU(),
 	})
 
 	engine.OnOpen(func(c *nbio.Conn) {
@@ -69,6 +71,7 @@ func StartTunnelServer(laddr string) *nbio.Engine {
 		Network:            "tcp",
 		Addrs:              []string{laddr},
 		MaxWriteBufferSize: 6 * 1024 * 1024,
+		NPoller:            runtime.NumCPU(),
 	})
 
 	engine.OnOpen(func(c *nbio.Conn) {
