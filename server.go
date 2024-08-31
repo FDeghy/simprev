@@ -20,6 +20,7 @@ func StartServer(laddr string) *nbio.Engine {
 		sess := GetTunnelConn()
 		if sess == nil {
 			c.Close()
+			log.Println("free tunnel connection NOT found")
 			return
 		}
 		c.SetSession(sess)
@@ -29,6 +30,7 @@ func StartServer(laddr string) *nbio.Engine {
 			if err != nil {
 				c.Close()
 				sess.Close()
+				log.Printf("write tunnel->user error: %v\n", err)
 				return
 			}
 
@@ -45,12 +47,14 @@ func StartServer(laddr string) *nbio.Engine {
 		if sess == nil {
 			c.Close()
 			sess.Close()
+			log.Println("OnData(user) tunnel connection NOT found")
 			return
 		}
 		_, err := sess.Write(data)
 		if err != nil {
 			c.Close()
 			sess.Close()
+			log.Printf("write user->tunnel error: %v\n", err)
 			return
 		}
 
