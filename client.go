@@ -13,102 +13,103 @@ var (
 	idleConns = &atomic.Int32{}
 )
 
-func StartClientTunnel(taddr, daddr string) (*nbio.Engine, *nbio.Engine) {
+func StartClientTunnel(taddr, daddr string, idleWorker int) (*nbio.Engine, *nbio.Engine) {
 	idleConns.Store(0)
 
-	tengine := nbio.NewEngine(nbio.Config{
+	tunnelEngine := nbio.NewEngine(nbio.Config{
 		Network:            "tcp",
 		MaxWriteBufferSize: 6 * 1024 * 1024,
 		NPoller:            runtime.NumCPU(),
 	})
 
-	dengine := nbio.NewEngine(nbio.Config{
+	destEngine := nbio.NewEngine(nbio.Config{
 		Network:            "tcp",
 		MaxWriteBufferSize: 6 * 1024 * 1024,
 		NPoller:            runtime.NumCPU(),
 	})
 
-	tengine.OnData(func(c *nbio.Conn, data []byte) {
+	tunnelEngine.OnData(func(tunnelConn *nbio.Conn, data []byte) {
 		var sess *nbio.Conn
-		sess, ok := c.Session().(*nbio.Conn)
-		if !ok || sess == nil {
-			conn, err := nbio.Dial("tcp", daddr)
-			if err != nil {
-				log.Printf("err: %v\n", err)
-				c.Close()
-				return
-			}
 
-			conn.OnData(func(conn *nbio.Conn, data []byte) {
-				_, err := c.Write(data)
+		sess, _ = tunnelConn.Session().(*nbio.Conn)
+		if sess == nil {
+			destEngine.DialAsyncTimeout("tcp", daddr, TIMEOUT, func(dstConn *nbio.Conn, err error) {
 				if err != nil {
-					c.Close()
-					sess.Close()
+					log.Printf("error in connect to dest: %v\n", err)
+					tunnelConn.Close()
 					return
 				}
 
-				c.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
-				sess.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
+				dstConn.OnData(func(dConn *nbio.Conn, data []byte) {
+					_, err := tunnelConn.Write(data)
+					if err != nil {
+						tunnelConn.Close()
+						dConn.Close()
+						return
+					}
+
+					tunnelConn.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
+					dConn.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
+				})
+
+				tunnelConn.SetSession(dstConn)
+				sess = dstConn
+
+				idleConns.Add(-1)
 			})
-			dengine.AddConn(conn)
-
-			c.SetSession(conn)
-			sess = conn
-
-			idleConns.Add(-1)
 		}
 
 		_, err := sess.Write(data)
 		if err != nil {
-			c.Close()
+			tunnelConn.Close()
 			sess.Close()
 			return
 		}
 
-		c.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
+		tunnelConn.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
 		sess.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
 	})
 
-	dengine.OnData(func(c *nbio.Conn, data []byte) {
+	destEngine.OnData(func(c *nbio.Conn, data []byte) {
 		c.DataHandler()(c, data)
 	})
 
-	tengine.OnClose(func(c *nbio.Conn, _ error) {
+	tunnelEngine.OnClose(func(c *nbio.Conn, _ error) {
 		sess, ok := c.Session().(*nbio.Conn)
 		if ok {
 			sess.Close()
 		}
 	})
 
-	err := tengine.Start()
+	err := tunnelEngine.Start()
 	if err != nil {
 		log.Fatalln(err)
 	}
-	err = dengine.Start()
+	err = destEngine.Start()
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	for i := 0; i < 8; i++ {
-		go func(engine *nbio.Engine) {
+	for i := 0; i < idleWorker; i++ {
+		go func() {
 			for {
 				if idleConns.Load() >= MAX_IDLE_CONNS {
-					time.Sleep(300 * time.Millisecond)
+					time.Sleep(500 * time.Millisecond)
 					continue
 				}
 
-				conn, err := nbio.Dial("tcp", taddr)
-				if err != nil {
-					log.Printf("err: %v\n", err)
-					continue
-				}
+				tunnelEngine.DialAsyncTimeout("tcp", taddr, TIMEOUT, func(c *nbio.Conn, err error) {
+					if err != nil {
+						log.Printf("connect to iran error: %v\n", err)
+						return
+					}
 
-				engine.AddConn(conn)
-				idleConns.Add(1)
-				log.Printf("idle conns: %v\n", idleConns.Load())
+					idleConns.Add(1)
+					log.Printf("idle conns: %v\n", idleConns.Load())
+				})
 			}
-		}(tengine)
+		}()
 	}
 
-	return tengine, dengine
+	return tunnelEngine, destEngine
 }

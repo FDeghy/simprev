@@ -10,6 +10,7 @@ func main() {
 	kharej := flag.Bool("f", false, "kharej")
 	taddr := flag.String("ta", "0.0.0.0:9985", "tunnel address (listen for iran, dial for kharej)")
 	paddr := flag.String("pa", "127.0.0.1:51900", "proxy address")
+	iw := flag.Int("iw", 4, "idle connection creator worker")
 	flag.Parse()
 
 	if *iran {
@@ -18,7 +19,7 @@ func main() {
 		sEngine := StartServer(*paddr)
 		defer sEngine.Stop()
 	} else if *kharej {
-		tEngine, dEngine := StartClientTunnel(*taddr, *paddr)
+		tEngine, dEngine := StartClientTunnel(*taddr, *paddr, *iw)
 		defer tEngine.Stop()
 		defer dEngine.Stop()
 	} else {

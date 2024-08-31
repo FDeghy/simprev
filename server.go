@@ -41,7 +41,12 @@ func StartServer(laddr string) *nbio.Engine {
 	})
 
 	engine.OnData(func(c *nbio.Conn, data []byte) {
-		sess := c.Session().(*nbio.Conn)
+		sess, _ := c.Session().(*nbio.Conn)
+		if sess == nil {
+			c.Close()
+			sess.Close()
+			return
+		}
 		_, err := sess.Write(data)
 		if err != nil {
 			c.Close()
@@ -54,8 +59,10 @@ func StartServer(laddr string) *nbio.Engine {
 	})
 
 	engine.OnClose(func(c *nbio.Conn, _ error) {
-		sess := c.Session().(*nbio.Conn)
-		sess.Close()
+		sess, _ := c.Session().(*nbio.Conn)
+		if sess != nil {
+			sess.Close()
+		}
 	})
 
 	err := engine.Start()
@@ -75,11 +82,22 @@ func StartTunnelServer(laddr string) *nbio.Engine {
 	})
 
 	engine.OnOpen(func(c *nbio.Conn) {
-		PutTunnelConn(c)
+		err := PutTunnelConn(c)
+		if err != nil {
+			c.Close()
+			log.Println("failed to accept tunnel connection")
+		}
 	})
 
 	engine.OnData(func(c *nbio.Conn, data []byte) {
 		c.DataHandler()(c, data)
+	})
+
+	engine.OnClose(func(c *nbio.Conn, _ error) {
+		sess, _ := c.Session().(*nbio.Conn)
+		if sess != nil {
+			sess.Close()
+		}
 	})
 
 	err := engine.Start()
