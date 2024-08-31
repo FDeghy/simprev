@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -13,7 +14,7 @@ var (
 	idleConns = &atomic.Int32{}
 )
 
-func StartClientTunnel(taddr, daddr string, idleWorker int) (*nbio.Engine, *nbio.Engine) {
+func StartClientTunnel(taddr, daddr string) (*nbio.Engine, *nbio.Engine) {
 	idleConns.Store(0)
 
 	tunnelEngine := nbio.NewEngine(nbio.Config{
@@ -30,13 +31,16 @@ func StartClientTunnel(taddr, daddr string, idleWorker int) (*nbio.Engine, *nbio
 
 	tunnelEngine.OnData(func(tunnelConn *nbio.Conn, data []byte) {
 		var sess *nbio.Conn
+		wg := sync.WaitGroup{}
 
 		sess, _ = tunnelConn.Session().(*nbio.Conn)
 		if sess == nil {
-			destEngine.DialAsyncTimeout("tcp", daddr, TIMEOUT, func(dstConn *nbio.Conn, err error) {
+			wg.Add(1)
+			err := destEngine.DialAsyncTimeout("tcp", daddr, TIMEOUT, func(dstConn *nbio.Conn, err error) {
 				if err != nil {
 					log.Printf("error in connect to dest: %v\n", err)
 					tunnelConn.Close()
+					wg.Done()
 					return
 				}
 
@@ -56,7 +60,14 @@ func StartClientTunnel(taddr, daddr string, idleWorker int) (*nbio.Engine, *nbio
 				sess = dstConn
 
 				idleConns.Add(-1)
+				wg.Done()
 			})
+			wg.Wait()
+			if err != nil {
+				log.Printf("error in connect to dest: %v\n", err)
+				tunnelConn.Close()
+				return
+			}
 		}
 
 		_, err := sess.Write(data)
@@ -90,26 +101,26 @@ func StartClientTunnel(taddr, daddr string, idleWorker int) (*nbio.Engine, *nbio
 		log.Fatalln(err)
 	}
 
-	for i := 0; i < idleWorker; i++ {
-		go func() {
-			for {
-				if idleConns.Load() >= MAX_IDLE_CONNS {
-					time.Sleep(500 * time.Millisecond)
-					continue
+	go func(tunnelEngine *nbio.Engine) {
+		for {
+			if idleConns.Load() >= MAX_IDLE_CONNS {
+				time.Sleep(500 * time.Millisecond)
+				continue
+			}
+
+			tunnelEngine.DialAsyncTimeout("tcp", taddr, TIMEOUT, func(c *nbio.Conn, err error) {
+				if err != nil {
+					log.Printf("connect to iran error: %v\n", err)
+					return
 				}
 
-				tunnelEngine.DialAsyncTimeout("tcp", taddr, TIMEOUT, func(c *nbio.Conn, err error) {
-					if err != nil {
-						log.Printf("connect to iran error: %v\n", err)
-						return
-					}
+				idleConns.Add(1)
+				log.Printf("idle conns: %v\n", idleConns.Load())
+			})
 
-					idleConns.Add(1)
-					log.Printf("idle conns: %v\n", idleConns.Load())
-				})
-			}
-		}()
-	}
+			time.Sleep(1 * time.Millisecond)
+		}
+	}(tunnelEngine)
 
 	return tunnelEngine, destEngine
 }
