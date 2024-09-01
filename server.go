@@ -89,8 +89,9 @@ func StartTunnelServer(laddr string) *nbio.Engine {
 		err := PutTunnelConn(c)
 		if err != nil {
 			c.Close()
-			log.Println("failed to accept tunnel connection")
+			log.Printf("failed to accept tunnel connection, err: %v\n", err)
 		}
+		log.Println("new tunnel connection accepted")
 	})
 
 	engine.OnData(func(c *nbio.Conn, data []byte) {
