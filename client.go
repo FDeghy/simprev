@@ -108,17 +108,19 @@ func StartClientTunnel(taddr, daddr string) (*nbio.Engine, *nbio.Engine) {
 				continue
 			}
 
-			tunnelEngine.DialAsyncTimeout("tcp", taddr, TIMEOUT, func(c *nbio.Conn, err error) {
+			go func() {
+				conn, err := nbio.DialTimeout("tcp", taddr, TIMEOUT)
 				if err != nil {
 					log.Printf("connect to iran error: %v\n", err)
 					return
 				}
+				tunnelEngine.AddConn(conn)
 
 				idleConns.Add(1)
 				log.Printf("idle conns: %v\n", idleConns.Load())
-			})
+			}()
 
-			time.Sleep(1 * time.Millisecond)
+			time.Sleep(5 * time.Millisecond)
 		}
 	}()
 
