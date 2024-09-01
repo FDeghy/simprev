@@ -3,7 +3,6 @@ package main
 import (
 	"log"
 	"runtime"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -30,55 +29,45 @@ func StartClientTunnel(taddr, daddr string) (*nbio.Engine, *nbio.Engine) {
 	})
 
 	tunnelEngine.OnData(func(tunnelConn *nbio.Conn, data []byte) {
-		var sess *nbio.Conn
-		wg := sync.WaitGroup{}
+		var destConn *nbio.Conn
 
-		sess, _ = tunnelConn.Session().(*nbio.Conn)
-		if sess == nil {
-			wg.Add(1)
-			err := destEngine.DialAsyncTimeout("tcp", daddr, TIMEOUT, func(dstConn *nbio.Conn, err error) {
-				if err != nil {
-					log.Printf("error in connect to dest: %v\n", err)
-					tunnelConn.Close()
-					wg.Done()
-					return
-				}
-
-				dstConn.OnData(func(dConn *nbio.Conn, data []byte) {
-					_, err := tunnelConn.Write(data)
-					if err != nil {
-						tunnelConn.Close()
-						dConn.Close()
-						return
-					}
-
-					tunnelConn.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
-					dConn.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
-				})
-
-				tunnelConn.SetSession(dstConn)
-				sess = dstConn
-
-				idleConns.Add(-1)
-				wg.Done()
-			})
-			wg.Wait()
+		destConn, _ = tunnelConn.Session().(*nbio.Conn)
+		if destConn == nil {
+			destConn, err := nbio.DialTimeout("tcp", daddr, TIMEOUT)
 			if err != nil {
 				log.Printf("error in connect to dest: %v\n", err)
 				tunnelConn.Close()
 				return
 			}
+
+			destConn.OnData(func(dConn *nbio.Conn, data []byte) {
+				_, err := tunnelConn.Write(data)
+				if err != nil {
+					tunnelConn.Close()
+					dConn.Close()
+					return
+				}
+
+				tunnelConn.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
+				dConn.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
+			})
+
+			destEngine.AddConn(destConn)
+
+			tunnelConn.SetSession(destConn)
+
+			idleConns.Add(-1)
 		}
 
-		_, err := sess.Write(data)
+		_, err := destConn.Write(data)
 		if err != nil {
 			tunnelConn.Close()
-			sess.Close()
+			destConn.Close()
 			return
 		}
 
 		tunnelConn.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
-		sess.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
+		destConn.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
 	})
 
 	destEngine.OnData(func(c *nbio.Conn, data []byte) {

@@ -16,56 +16,56 @@ func StartServer(laddr string) *nbio.Engine {
 		NPoller:            runtime.NumCPU(),
 	})
 
-	engine.OnOpen(func(c *nbio.Conn) {
-		sess := GetTunnelConn()
-		if sess == nil {
-			c.Close()
+	engine.OnOpen(func(userConn *nbio.Conn) {
+		tunnelConn := GetTunnelConn()
+		if tunnelConn == nil {
+			userConn.Close()
 			log.Println("free tunnel connection NOT found")
 			return
 		}
-		c.SetSession(sess)
+		userConn.SetSession(tunnelConn)
 
-		sess.OnData(func(conn *nbio.Conn, data []byte) {
-			_, err := c.Write(data)
+		tunnelConn.OnData(func(tConn *nbio.Conn, data []byte) {
+			_, err := userConn.Write(data)
 			if err != nil {
-				c.Close()
-				sess.Close()
+				userConn.Close()
+				tConn.Close()
 				log.Printf("write tunnel->user error: %v\n", err)
 				return
 			}
 
-			c.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
-			sess.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
+			userConn.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
+			tunnelConn.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
 		})
 
-		c.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
-		sess.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
+		userConn.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
+		tunnelConn.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
 	})
 
-	engine.OnData(func(c *nbio.Conn, data []byte) {
-		sess, _ := c.Session().(*nbio.Conn)
-		if sess == nil {
-			c.Close()
-			sess.Close()
+	engine.OnData(func(userConn *nbio.Conn, data []byte) {
+		tunnelConn, _ := userConn.Session().(*nbio.Conn)
+		if tunnelConn == nil {
+			userConn.Close()
+			tunnelConn.Close()
 			log.Println("OnData(user) tunnel connection NOT found")
 			return
 		}
-		_, err := sess.Write(data)
+		_, err := tunnelConn.Write(data)
 		if err != nil {
-			c.Close()
-			sess.Close()
+			userConn.Close()
+			tunnelConn.Close()
 			log.Printf("write user->tunnel error: %v\n", err)
 			return
 		}
 
-		c.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
-		sess.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
+		userConn.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
+		tunnelConn.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
 	})
 
 	engine.OnClose(func(c *nbio.Conn, _ error) {
-		sess, _ := c.Session().(*nbio.Conn)
-		if sess != nil {
-			sess.Close()
+		tunnelConn, _ := c.Session().(*nbio.Conn)
+		if tunnelConn != nil {
+			tunnelConn.Close()
 		}
 	})
 
@@ -85,20 +85,20 @@ func StartTunnelServer(laddr string) *nbio.Engine {
 		NPoller:            runtime.NumCPU(),
 	})
 
-	engine.OnOpen(func(c *nbio.Conn) {
-		err := PutTunnelConn(c)
+	engine.OnOpen(func(tConn *nbio.Conn) {
+		err := PutTunnelConn(tConn)
 		if err != nil {
-			c.Close()
+			tConn.Close()
 			log.Printf("failed to accept tunnel connection, err: %v\n", err)
 		}
 	})
 
-	engine.OnData(func(c *nbio.Conn, data []byte) {
-		c.DataHandler()(c, data)
+	engine.OnData(func(tConn *nbio.Conn, data []byte) {
+		tConn.DataHandler()(tConn, data)
 	})
 
-	engine.OnClose(func(c *nbio.Conn, _ error) {
-		sess, _ := c.Session().(*nbio.Conn)
+	engine.OnClose(func(tConn *nbio.Conn, _ error) {
+		sess, _ := tConn.Session().(*nbio.Conn)
 		if sess != nil {
 			sess.Close()
 		}
