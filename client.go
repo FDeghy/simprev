@@ -33,14 +33,14 @@ func StartClientTunnel(taddr, daddr string) (*nbio.Engine, *nbio.Engine) {
 
 		destConn, _ = tunnelConn.Session().(*nbio.Conn)
 		if destConn == nil {
-			destConn, err := nbio.DialTimeout("tcp", daddr, TIMEOUT)
+			dConn, err := nbio.DialTimeout("tcp", daddr, TIMEOUT)
 			if err != nil {
 				log.Printf("error in connect to dest: %v\n", err)
 				tunnelConn.Close()
 				return
 			}
 
-			destConn.OnData(func(dConn *nbio.Conn, data []byte) {
+			dConn.OnData(func(dConn *nbio.Conn, data []byte) {
 				_, err := tunnelConn.Write(data)
 				if err != nil {
 					tunnelConn.Close()
@@ -52,8 +52,8 @@ func StartClientTunnel(taddr, daddr string) (*nbio.Engine, *nbio.Engine) {
 				dConn.SetReadDeadline(time.Now().Add(MAX_IDLE_TIME))
 			})
 
+			destConn = dConn
 			destEngine.AddConn(destConn)
-
 			tunnelConn.SetSession(destConn)
 
 			idleConns.Add(-1)
@@ -75,9 +75,11 @@ func StartClientTunnel(taddr, daddr string) (*nbio.Engine, *nbio.Engine) {
 	})
 
 	tunnelEngine.OnClose(func(c *nbio.Conn, _ error) {
-		sess, ok := c.Session().(*nbio.Conn)
+		destConn, ok := c.Session().(*nbio.Conn)
 		if ok {
-			sess.Close()
+			destConn.Close()
+		} else {
+			idleConns.Add(-1)
 		}
 	})
 
