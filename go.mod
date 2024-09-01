@@ -1,4 +1,4 @@
-module simprev
+module Simprev
 
 go 1.23.0
 
