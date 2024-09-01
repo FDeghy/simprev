@@ -101,7 +101,7 @@ func StartClientTunnel(taddr, daddr string) (*nbio.Engine, *nbio.Engine) {
 		log.Fatalln(err)
 	}
 
-	go func(tunnelEngine *nbio.Engine) {
+	go func() {
 		for {
 			if idleConns.Load() >= MAX_IDLE_CONNS {
 				time.Sleep(500 * time.Millisecond)
@@ -120,7 +120,7 @@ func StartClientTunnel(taddr, daddr string) (*nbio.Engine, *nbio.Engine) {
 
 			time.Sleep(1 * time.Millisecond)
 		}
-	}(tunnelEngine)
+	}()
 
 	return tunnelEngine, destEngine
 }
