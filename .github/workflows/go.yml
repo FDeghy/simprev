@@ -1,0 +1,68 @@
+# This workflow will build a golang project
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
+
+name: Go
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+
+  build:
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        # Include amd64 on all platforms.
+        goos: [linux]
+        goarch: [amd64, arm64]
+        gotoolchain: [""]
+        patch-assetname: [""]
+
+      fail-fast: false
+
+    runs-on: ubuntu-latest
+    env:
+      GOOS: ${{ matrix.goos }}
+      GOARCH: ${{ matrix.goarch }}
+      GOARM: ${{ matrix.goarm }}
+      CGO_ENABLED: 0
+      
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ matrix.gotoolchain || '1.22.5' }}
+        check-latest: true
+
+    - name: Install dependencies
+      run: |
+        go get .
+        go mod download
+    
+    - name: Build
+      run: |
+        go build .
+      
+
+    - name: Change the name
+      run: |
+        mv Simprev Simprev-${{ env.GOOS }}-${{ env.GOARCH }}
+    
+
+    - name: Upload binaries to release
+      uses: svenstaro/upload-release-action@v2
+      if: github.event_name == 'release'
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: ./Simprev*
+        tag: ${{ github.ref }}
+        file_glob: true
